@@ -1,0 +1,93 @@
+#include "HX711.h"
+
+// ---------------- PIN DEFINITIONS ----------------
+#define DT 4
+#define SCK 18
+
+#define RELAY 26
+#define GREEN_LED 27
+#define RED_LED 25
+#define BUTTON 14
+
+HX711 scale;
+
+// ---------------- USER SETTINGS ----------------
+long LOWER_LIMIT = -45000;
+long UPPER_LIMIT = -25000;
+
+// ---------------- FILTER ----------------
+#define SAMPLE_COUNT 10
+
+bool fault = false;
+
+// ---------------- SETUP ----------------
+void setup() {
+  Serial.begin(115200);
+
+  pinMode(RELAY, OUTPUT);
+  pinMode(GREEN_LED, OUTPUT);
+  pinMode(RED_LED, OUTPUT);
+  pinMode(BUTTON, INPUT_PULLUP);
+
+  // Default state → RELAY ON
+  digitalWrite(RELAY, HIGH);
+  digitalWrite(GREEN_LED, HIGH);
+  digitalWrite(RED_LED, LOW);
+
+  scale.begin(DT, SCK);
+
+  Serial.println("System Ready");
+}
+
+// ---------------- FILTERED READ ----------------
+long readFiltered() {
+  long sum = 0;
+
+  for (int i = 0; i < SAMPLE_COUNT; i++) {
+    while (!scale.is_ready());
+    sum += scale.read();
+  }
+
+  return sum / SAMPLE_COUNT;
+}
+
+// ---------------- LOOP ----------------
+void loop() {
+
+  long value = readFiltered();
+
+  Serial.print("Tension Value: ");
+  Serial.println(value);
+
+  // -------- BREAK DETECTION (STABLE CHECK) --------
+  if (value > LOWER_LIMIT && value < UPPER_LIMIT) {
+    delay(100);  // small confirmation delay
+
+    long confirm = readFiltered();
+
+    if (confirm > LOWER_LIMIT && confirm < UPPER_LIMIT) {
+      fault = true;
+      Serial.println("Wire Break Detected!");
+    }
+  }
+
+  // -------- RESET BUTTON --------
+  if (digitalRead(BUTTON) == LOW) {
+    fault = false;
+    Serial.println("Manual Reset");
+    delay(300); // debounce
+  }
+
+  // -------- OUTPUT CONTROL --------
+  if (fault) {
+    digitalWrite(RELAY, LOW);    // CUT POWER
+    digitalWrite(RED_LED, HIGH);
+    digitalWrite(GREEN_LED, LOW);
+  } else {
+    digitalWrite(RELAY, HIGH);   // NORMAL
+    digitalWrite(GREEN_LED, HIGH);
+    digitalWrite(RED_LED, LOW);
+  }
+
+  delay(200);
+}
